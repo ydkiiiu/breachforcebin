@@ -8,7 +8,14 @@ import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///pastebin.db')
+
+# Database URL handling (works with both SQLite and Postgres from Railway/Render)
+database_url = os.environ.get('DATABASE_URL', 'sqlite:////tmp/pastebin.db')
+if database_url.startswith('postgres://'):
+    # Railway/Render sometimes give postgres:// which SQLAlchemy doesn't like
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -290,9 +297,19 @@ def not_found(e):
 
 # ==================== INIT ====================
 
-with app.app_context():
-    db.create_all()
-    create_admin_if_not_exists()
+def init_db():
+    """Initialize database tables and default admin. Safe to call multiple times."""
+    try:
+        with app.app_context():
+            db.create_all()
+            create_admin_if_not_exists()
+            print("Database initialized successfully")
+    except Exception as e:
+        print(f"Database init warning: {e}")
+
+
+# Run init when the app starts (works better with Gunicorn)
+init_db()
 
 
 if __name__ == '__main__':
